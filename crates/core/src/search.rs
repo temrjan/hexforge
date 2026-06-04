@@ -68,6 +68,7 @@ pub struct Progress {
 ///
 /// Holds secret material ([`Self::mnemonic`], [`Self::private_key`]) in
 /// zeroizing buffers; its [`fmt::Debug`] redacts them.
+#[derive(Clone)]
 pub struct FoundWallet {
     /// The target word this wallet matched.
     pub target_word: String,
