@@ -13,3 +13,6 @@ path = "src/main.rs"
 [dependencies]
 hexforge-core.workspace = true
 # The egui interface and its dependencies are introduced in PR2.
+
+[lints]
+workspace = true

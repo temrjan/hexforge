@@ -1,8 +1,23 @@
 //! `hexforge-core` — vanity Ethereum address search engine.
 //!
-//! Status: scaffold. The generation/derivation/search engine lands in PR1.
-//! This module currently provides the shared types and input validation that
-//! both the engine and the GUI build on.
+//! Generates wallets, derives their addresses, and searches for a chosen hex
+//! word at the start, anywhere, or the end of the address. The CPU engine
+//! produces full wallets backed by a BIP-39 mnemonic.
+//!
+//! The crate performs no file or network I/O and never logs secret material;
+//! persistence and presentation are the caller's responsibility.
+
+mod derive;
+mod matcher;
+mod search;
+
+pub use derive::{
+    address_from_private_key, derive_from_phrase, DeriveError, Derived, DEFAULT_DERIVATION_PATH,
+};
+pub use matcher::Target;
+pub use search::{search, FoundWallet, Progress, SearchConfig, SearchError};
+
+use thiserror::Error;
 
 /// Number of hex characters in an Ethereum address, excluding the `0x` prefix.
 pub const ADDRESS_HEX_LEN: usize = 40;
@@ -19,37 +34,34 @@ pub enum MatchMode {
 }
 
 /// Reasons a target word is rejected.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ValidateError {
     /// The word was empty after trimming.
+    #[error("empty target")]
     Empty,
     /// The word contains a character that is not a hex digit (`0-9a-f`).
+    #[error("non-hex character '{0}' (addresses use only 0-9, a-f)")]
     NonHex(char),
     /// The word is longer than an address can hold.
-    TooLong { len: usize, max: usize },
+    #[error("target too long: {len} chars (max {max})")]
+    TooLong {
+        /// Length of the supplied word.
+        len: usize,
+        /// Maximum searchable length ([`ADDRESS_HEX_LEN`]).
+        max: usize,
+    },
 }
 
-impl std::fmt::Display for ValidateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValidateError::Empty => write!(f, "empty target"),
-            ValidateError::NonHex(c) => {
-                write!(f, "non-hex character '{c}' (addresses use only 0-9, a-f)")
-            }
-            ValidateError::TooLong { len, max } => {
-                write!(f, "target too long: {len} chars (max {max})")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ValidateError {}
-
-/// Validate and normalize a target word.
+/// Validates and normalizes a target word.
 ///
 /// An Ethereum address is hexadecimal, so a searchable word may contain only
 /// `0-9` and `a-f`. The word is trimmed and lowercased; the normalized form is
 /// returned on success.
+///
+/// # Errors
+///
+/// Returns [`ValidateError`] if the word is empty, contains a non-hex
+/// character, or is longer than [`ADDRESS_HEX_LEN`].
 pub fn validate_target(word: &str) -> Result<String, ValidateError> {
     let normalized = word.trim().to_lowercase();
 
@@ -71,7 +83,7 @@ pub fn validate_target(word: &str) -> Result<String, ValidateError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{validate_target, ValidateError, ADDRESS_HEX_LEN};
 
     #[test]
     fn accepts_and_normalizes_hex_words() {
@@ -82,7 +94,6 @@ mod tests {
 
     #[test]
     fn rejects_non_hex_reporting_first_bad_char() {
-        // 'r' is not a hex digit.
         assert_eq!(validate_target("rustok"), Err(ValidateError::NonHex('r')));
     }
 

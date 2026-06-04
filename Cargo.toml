@@ -7,7 +7,28 @@ edition = "2021"
 license = "MIT"
 authors = ["Temrjan"]
 repository = "https://github.com/temrjan/hexforge"
-rust-version = "1.74"
 
 [workspace.dependencies]
 hexforge-core = { path = "crates/core" }
+
+# Crypto / engine
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"
+coins-bip39 = "0.12"
+coins-bip32 = "0.12"
+rand = "0.8"
+rayon = "1"
+zeroize = { version = "1", features = ["derive"] }
+hex = "0.4"
+thiserror = "2"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Re-exports surface these at the crate root under their domain name.
+module_name_repetitions = "allow"
+# Domain vocabulary (BIP-39, secp256k1, Keccak, MetaMask…) is not code.
+doc_markdown = "allow"
