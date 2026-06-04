@@ -52,10 +52,17 @@ Activities and pin it to the dash. Remove everything with
 - [x] **PR1** — core CPU engine (mnemonic, match modes, derivation) + tests
 - [x] **PR2** — egui GUI (search, live progress, accumulating results)
 - [x] **PR5** — packaging (local `.desktop` install + icon)
+- [x] **Design** — egui theme (Inter / JetBrains Mono, amber accent, cards, match highlight)
 - [ ] **PR3** — security / UX (masked secrets, clipboard auto-clear, export, offline badge)
 - [ ] **PR4** — optional GPU engine (external `profanity2` + safe key combine)
 - [ ] *(later)* RPM / Flatpak distribution
 
+## Fonts
+
+The UI bundles [Inter](https://github.com/rsms/inter) and
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both under the SIL
+Open Font License 1.1 (see `crates/gui/assets/fonts/OFL-*.txt`).
+
 ## License
 
-[MIT](LICENSE)
+Project code: [MIT](LICENSE). Bundled fonts: SIL OFL 1.1 (see above).

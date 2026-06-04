@@ -4,18 +4,25 @@
 //! a channel so the UI never blocks. Secret material (mnemonic, private key) is
 //! hidden until the user reveals it, and nothing is written to disk.
 
+mod theme;
+
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, TryRecvError};
-use eframe::egui;
+use eframe::egui::{self, FontFamily, RichText};
 use hexforge_core::{
     search, FoundWallet, MatchMode, Progress, SearchConfig, SearchError, Target,
     DEFAULT_DERIVATION_PATH,
 };
+
+use theme::color;
+
+/// How long the "Скопировано ✓" confirmation stays on a copy button.
+const COPIED_FLASH: Duration = Duration::from_millis(1200);
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -23,14 +30,15 @@ fn main() -> eframe::Result {
             // app_id must match StartupWMClass in the .desktop so the window
             // groups under the launcher icon (Wayland/X11).
             .with_app_id("hexforge")
-            .with_inner_size([560.0, 440.0]),
+            .with_inner_size([560.0, 460.0])
+            .with_min_inner_size([480.0, 420.0]),
         ..Default::default()
     };
     eframe::run_native(
         "hexforge",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            theme::apply(&cc.egui_ctx);
             Ok(Box::new(HexforgeApp::default()))
         }),
     )
@@ -65,6 +73,7 @@ struct HexforgeApp {
     progress: Option<Progress>,
     error: Option<String>,
     reveal: HashSet<usize>,
+    copied: Option<(usize, Instant)>,
     worker: Option<Worker>,
 }
 
@@ -78,6 +87,7 @@ impl Default for HexforgeApp {
             progress: None,
             error: None,
             reveal: HashSet::new(),
+            copied: None,
             worker: None,
         }
     }
@@ -185,6 +195,27 @@ impl HexforgeApp {
         }
     }
 
+    fn copied_flash_active(&self) -> bool {
+        self.copied
+            .is_some_and(|(_, at)| at.elapsed() < COPIED_FLASH)
+    }
+
+    fn ui_brand(ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            theme::paint_hexmark(ui, 26.0);
+            ui.add_space(2.0);
+            ui.heading(RichText::new("hexforge").color(color::TXT));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    RichText::new("vanity eth")
+                        .size(11.0)
+                        .family(FontFamily::Monospace)
+                        .color(color::TXT_FAINT),
+                );
+            });
+        });
+    }
+
     fn ui_controls(&mut self, ui: &mut egui::Ui) {
         let validation = validation_message(&self.word);
         // Empty input shows no error but must not enable the search.
@@ -192,40 +223,47 @@ impl HexforgeApp {
         let running = self.state == RunState::Running;
 
         ui.horizontal(|ui| {
-            ui.label("Слово:");
+            ui.label(RichText::new("Слово:").color(color::TXT_MUTED));
             ui.add_enabled(
                 !running,
-                egui::TextEdit::singleline(&mut self.word).hint_text("deadbeef"),
+                egui::TextEdit::singleline(&mut self.word)
+                    .hint_text("deadbeef")
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(f32::INFINITY),
             );
         });
         if let Some(message) = &validation {
-            ui.colored_label(egui::Color32::from_rgb(220, 90, 90), message);
+            ui.label(RichText::new(message).size(11.0).color(color::DANGER));
         }
 
         ui.horizontal(|ui| {
-            ui.label("Где:");
+            ui.label(RichText::new("Где:").color(color::TXT_MUTED));
             ui.radio_value(&mut self.mode, MatchMode::Prefix, "в начале");
             ui.radio_value(&mut self.mode, MatchMode::Anywhere, "везде");
             ui.radio_value(&mut self.mode, MatchMode::Suffix, "в конце");
         });
 
-        let has_results = !self.found.is_empty();
         ui.horizontal(|ui| {
-            if ui
-                .add_enabled(can_start && !running, egui::Button::new("Искать"))
-                .clicked()
-            {
+            let primary = if can_start && !running {
+                egui::Button::new(RichText::new("Искать").color(color::ON_ACCENT))
+                    .fill(color::ACCENT)
+            } else {
+                egui::Button::new(RichText::new("Искать").color(color::TXT_FAINT))
+            };
+            if ui.add_enabled(can_start && !running, primary).clicked() {
                 self.start();
             }
             if ui.add_enabled(running, egui::Button::new("Стоп")).clicked() {
                 self.stop();
             }
+            let has_results = !self.found.is_empty();
             if ui
                 .add_enabled(has_results && !running, egui::Button::new("Очистить"))
                 .clicked()
             {
                 self.found.clear();
                 self.reveal.clear();
+                self.copied = None;
             }
         });
     }
@@ -233,26 +271,41 @@ impl HexforgeApp {
     fn ui_status(&self, ui: &mut egui::Ui) {
         match self.state {
             RunState::Idle => {
-                ui.label("Введите hex-слово и нажмите «Искать».");
+                ui.horizontal(|ui| {
+                    status_dot(ui, color::TXT_FAINT);
+                    ui.label(
+                        RichText::new("Введите hex-слово и нажмите «Искать».")
+                            .color(color::TXT_MUTED),
+                    );
+                });
             }
             RunState::Running => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    ui.add(egui::Spinner::new().color(color::ACCENT).size(14.0));
                     match &self.progress {
-                        Some(progress) => ui.label(format_progress(progress)),
-                        None => ui.label("Идёт поиск… (разогрев)"),
-                    }
+                        Some(progress) => ui.label(
+                            RichText::new(format_progress(progress))
+                                .family(FontFamily::Monospace)
+                                .color(color::TXT),
+                        ),
+                        None => ui
+                            .label(RichText::new("Идёт поиск… (разогрев)").color(color::TXT_MUTED)),
+                    };
                 });
             }
             RunState::Done => {
-                if let Some(error) = &self.error {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(220, 90, 90),
-                        format!("Ошибка: {error}"),
-                    );
-                } else {
-                    ui.label(format!("Готово · найдено {}", self.found.len()));
-                }
+                ui.horizontal(|ui| {
+                    if let Some(error) = &self.error {
+                        status_dot(ui, color::DANGER);
+                        ui.label(RichText::new(format!("Ошибка: {error}")).color(color::DANGER));
+                    } else {
+                        status_dot(ui, color::SUCCESS);
+                        ui.label(
+                            RichText::new(format!("Готово · найдено {}", self.found.len()))
+                                .color(color::TXT_MUTED),
+                        );
+                    }
+                });
             }
         }
     }
@@ -260,58 +313,83 @@ impl HexforgeApp {
     fn ui_results(&mut self, ui: &mut egui::Ui) {
         if self.found.is_empty() {
             if self.state == RunState::Running {
-                ui.label("Пока ничего не найдено — ищем…");
+                ui.label(RichText::new("Пока ничего не найдено — ищем…").color(color::TXT_MUTED));
             }
             return;
         }
-        ui.label(format!("Найдено: {}", self.found.len()));
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("Найдено: ")
+                    .family(theme::strong_family())
+                    .color(color::TXT),
+            );
+            ui.label(
+                RichText::new(self.found.len().to_string())
+                    .family(theme::strong_family())
+                    .color(color::ACCENT),
+            );
+        });
+        ui.add_space(2.0);
+
         let mut toggle: Option<usize> = None;
+        let mut copied_now: Option<usize> = None;
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
                 for (index, wallet) in self.found.iter().enumerate() {
                     let revealed = self.reveal.contains(&index);
-                    ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.monospace(wallet.address.as_str());
-                            if ui.button("Копировать адрес").clicked() {
-                                ui.ctx().copy_text(wallet.address.clone());
-                            }
-                            let label = if revealed {
-                                "Скрыть"
-                            } else {
-                                "Показать секрет"
-                            };
-                            if ui.button(label).clicked() {
-                                toggle = Some(index);
+                    let is_copied = self
+                        .copied
+                        .is_some_and(|(ci, at)| ci == index && at.elapsed() < COPIED_FLASH);
+                    egui::Frame::default()
+                        .fill(color::CARD_BG)
+                        .stroke(egui::Stroke::new(1.0, color::BORDER))
+                        .corner_radius(egui::CornerRadius::same(8))
+                        .inner_margin(egui::Margin::same(12))
+                        .shadow(theme::card_shadow())
+                        .show(ui, |ui| {
+                            ui.label(theme::address_layout(&wallet.address, &wallet.target_word));
+                            ui.add_space(2.0);
+                            ui.horizontal(|ui| {
+                                let copy_label = if is_copied {
+                                    RichText::new("Скопировано ✓")
+                                        .size(12.0)
+                                        .color(color::SUCCESS)
+                                } else {
+                                    RichText::new("Копировать адрес").size(12.0)
+                                };
+                                if ui.button(copy_label).clicked() {
+                                    ui.ctx().copy_text(wallet.address.clone());
+                                    copied_now = Some(index);
+                                }
+                                let reveal_label = if revealed {
+                                    "Скрыть"
+                                } else {
+                                    "Показать секрет"
+                                };
+                                if ui.button(RichText::new(reveal_label).size(12.0)).clicked() {
+                                    toggle = Some(index);
+                                }
+                            });
+                            if revealed {
+                                // NOTE: rendering a secret hands its text to egui's
+                                // galley cache (not zeroized). Inherent to showing a
+                                // secret in any GUI; reveal is an explicit action.
+                                ui.add_space(2.0);
+                                secret_block(ui, wallet);
                             }
                         });
-                        if revealed {
-                            // NOTE: rendering a secret hands its text to egui's galley
-                            // cache (font layout), which is not zeroized. This is
-                            // inherent to displaying secrets in any GUI; reveal is an
-                            // explicit, transient user action.
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(wallet.mnemonic.as_str()).monospace(),
-                                )
-                                .selectable(true),
-                            );
-                            let private_key = wallet.private_key_hex();
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(private_key.as_str()).monospace(),
-                                )
-                                .selectable(true),
-                            );
-                        }
-                    });
                 }
             });
+
         if let Some(index) = toggle {
             if !self.reveal.remove(&index) {
                 self.reveal.insert(index);
             }
+        }
+        if let Some(index) = copied_now {
+            self.copied = Some((index, Instant::now()));
         }
     }
 }
@@ -320,24 +398,31 @@ impl eframe::App for HexforgeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.drain_messages();
 
-        // Fixed controls on top, fixed note at the bottom, scrolling results in
-        // the middle — the list scrolls no matter how many wallets accumulate.
         egui::Panel::top("controls").show_inside(ui, |ui| {
-            ui.heading("hexforge");
             ui.add_space(4.0);
+            Self::ui_brand(ui);
+            ui.add_space(6.0);
             self.ui_controls(ui);
+            ui.add_space(2.0);
             ui.separator();
             self.ui_status(ui);
+            ui.add_space(2.0);
         });
         egui::Panel::bottom("footer").show_inside(ui, |ui| {
             ui.separator();
-            ui.small("🔒 Offline · ключи не сохраняются на диск · выпиши seed на бумагу");
+            ui.add_space(2.0);
+            ui.label(
+                RichText::new("🔒 Offline · ключи не сохраняются на диск · выпиши seed на бумагу")
+                    .size(11.0)
+                    .color(color::TXT_FAINT),
+            );
+            ui.add_space(2.0);
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.ui_results(ui);
         });
 
-        if self.state == RunState::Running {
+        if self.state == RunState::Running || self.copied_flash_active() {
             ui.ctx().request_repaint();
         }
     }
@@ -348,6 +433,51 @@ impl eframe::App for HexforgeApp {
         }
         self.join_worker();
     }
+}
+
+/// Paints a small filled status dot.
+fn status_dot(ui: &mut egui::Ui, fill: egui::Color32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 3.5, fill);
+}
+
+/// Renders the revealed secret block (mnemonic + private key) in an inset frame.
+fn secret_block(ui: &mut egui::Ui, wallet: &FoundWallet) {
+    egui::Frame::default()
+        .fill(color::INSET_BG)
+        .stroke(egui::Stroke::new(1.0, color::BORDER_SOFT))
+        .corner_radius(egui::CornerRadius::same(6))
+        .inner_margin(egui::Margin::same(12))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new("SEED-ФРАЗА")
+                    .size(11.0)
+                    .color(color::TXT_MUTED),
+            );
+            ui.add(
+                egui::Label::new(
+                    RichText::new(wallet.mnemonic.as_str())
+                        .family(FontFamily::Monospace)
+                        .color(color::MONO_TXT),
+                )
+                .selectable(true),
+            );
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("ПРИВАТНЫЙ КЛЮЧ")
+                    .size(11.0)
+                    .color(color::TXT_MUTED),
+            );
+            let private_key = wallet.private_key_hex();
+            ui.add(
+                egui::Label::new(
+                    RichText::new(private_key.as_str())
+                        .family(FontFamily::Monospace)
+                        .color(color::TXT),
+                )
+                .selectable(true),
+            );
+        });
 }
 
 /// Generated keys per second, guarding against a zero elapsed time.
