@@ -1,0 +1,10 @@
+[package]
+name = "hexforge-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Vanity Ethereum address search engine (generation, derivation, matching)."
+
+[dependencies]
+# Crypto/engine dependencies are introduced in PR1 (core CPU engine).

@@ -1,0 +1,23 @@
+# Build artifacts
+/target
+
+# --- Secrets: NEVER commit generated keys/wallets ---
+found-wallets*
+WALLET-*
+*.wallet
+*.pem
+*.keystore
+keystore/
+exports/
+base-key*.txt
+
+# Runtime
+*.pid
+run-*.log
+
+# Editor / OS
+*.swp
+*.rs.bk
+.idea/
+.vscode/
+.DS_Store

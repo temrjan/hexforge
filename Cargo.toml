@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/gui"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Temrjan"]
+repository = "https://github.com/temrjan/hexforge"
+rust-version = "1.74"
+
+[workspace.dependencies]
+hexforge-core = { path = "crates/core" }
