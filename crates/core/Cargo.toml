@@ -7,4 +7,15 @@ repository.workspace = true
 description = "Vanity Ethereum address search engine (generation, derivation, matching)."
 
 [dependencies]
-# Crypto/engine dependencies are introduced in PR1 (core CPU engine).
+k256.workspace = true
+sha3.workspace = true
+coins-bip39.workspace = true
+coins-bip32.workspace = true
+rand.workspace = true
+rayon.workspace = true
+zeroize.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
