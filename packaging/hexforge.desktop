@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=hexforge
+Comment=Vanity Ethereum address forge
+Exec=hexforge
+Icon=hexforge
+Terminal=false
+Categories=Utility;
+StartupWMClass=hexforge

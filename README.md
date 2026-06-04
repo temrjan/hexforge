@@ -4,8 +4,8 @@ Vanity Ethereum address forge — generate `0x…` addresses that contain a chos
 word at the **start**, **anywhere**, or the **end**, through a minimalist native
 GUI for Linux / Fedora.
 
-> **Status: early scaffold (WIP).** The engine and GUI are built in phases — see
-> the roadmap below.
+> **Status: usable.** CPU engine + minimalist GUI shipped and installable as a
+> desktop app. GPU mode and extra UX polish are on the roadmap.
 
 ## What it does
 
@@ -32,14 +32,29 @@ sudo dnf install gcc libxkbcommon-devel wayland-devel mesa-libGL-devel
 cargo build --release
 ```
 
+## Install as an app (Linux / GNOME)
+
+Make `hexforge` a real desktop app — a launcher icon in the GNOME app grid, no
+terminal, no root:
+
+```bash
+./packaging/install.sh
+```
+
+It builds the release binary, installs it to `~/.local/bin`, and adds a
+`.desktop` entry + icon under `~/.local/share`. Then search **hexforge** in
+Activities and pin it to the dash. Remove everything with
+`./packaging/uninstall.sh`.
+
 ## Roadmap
 
 - [x] Scaffold + input-validation primitives
-- [ ] **PR1** — core CPU engine (mnemonic, match modes, derivation) + tests
-- [ ] **PR2** — egui GUI (search, live progress, results)
-- [ ] **PR3** — security / UX (masked secrets, clipboard, export, offline badge)
+- [x] **PR1** — core CPU engine (mnemonic, match modes, derivation) + tests
+- [x] **PR2** — egui GUI (search, live progress, accumulating results)
+- [x] **PR5** — packaging (local `.desktop` install + icon)
+- [ ] **PR3** — security / UX (masked secrets, clipboard auto-clear, export, offline badge)
 - [ ] **PR4** — optional GPU engine (external `profanity2` + safe key combine)
-- [ ] **PR5** — packaging (`.desktop`, RPM / Flatpak)
+- [ ] *(later)* RPM / Flatpak distribution
 
 ## License
 

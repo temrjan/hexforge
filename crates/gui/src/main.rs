@@ -19,7 +19,11 @@ use hexforge_core::{
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([560.0, 440.0]),
+        viewport: egui::ViewportBuilder::default()
+            // app_id must match StartupWMClass in the .desktop so the window
+            // groups under the launcher icon (Wayland/X11).
+            .with_app_id("hexforge")
+            .with_inner_size([560.0, 440.0]),
         ..Default::default()
     };
     eframe::run_native(
